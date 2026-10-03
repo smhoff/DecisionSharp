@@ -8,3 +8,4 @@ artifacts/
 *.user
 *.suo
 .env.*
+**/Properties/launchSettings.json

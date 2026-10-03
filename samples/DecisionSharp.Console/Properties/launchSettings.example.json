@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "Hosted Jev": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DECISIONSHARP_BASE_URI": "https://api.typesafe.ai/",
+        "DECISIONSHARP_MODEL": "jev-latest",
+        "DECISIONSHARP_API_KEY": "",
+        "DECISIONSHARP_LOCAL": "false"
+      }
+    }
+  }
+}

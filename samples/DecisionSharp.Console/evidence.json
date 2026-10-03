@@ -1,0 +1,1 @@
+[{"id":"billing","content":"Failed invoices are retried after the payment method is updated.","retrievalScore":0.81,"metadata":{"source":"Confluence","url":"https://company.example/billing"}},{"id":"weather","content":"The office weather display refreshes every hour.","retrievalScore":0.92,"metadata":{"source":"source-code","path":"WeatherDisplay.cs"}}]
