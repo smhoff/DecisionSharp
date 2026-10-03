@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+artifacts/
+.superpowers/
+.env
+.idea/
+.vs/
+*.user
+*.suo
+.env.*
