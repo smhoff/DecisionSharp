@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DecisionSharp.Jev", "Decisi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DecisionSharp.Extensions.DependencyInjection", "DecisionSharp.Extensions.DependencyInjection\DecisionSharp.Extensions.DependencyInjection.csproj", "{AAD1CC50-71C8-4384-A823-28E7855EED6C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DecisionSharp.Reranking", "DecisionSharp.Reranking\DecisionSharp.Reranking.csproj", "{C359E661-F086-4481-851E-11E2D3871294}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -73,6 +75,18 @@ Global
 		{AAD1CC50-71C8-4384-A823-28E7855EED6C}.Release|x64.Build.0 = Release|Any CPU
 		{AAD1CC50-71C8-4384-A823-28E7855EED6C}.Release|x86.ActiveCfg = Release|Any CPU
 		{AAD1CC50-71C8-4384-A823-28E7855EED6C}.Release|x86.Build.0 = Release|Any CPU
+		{C359E661-F086-4481-851E-11E2D3871294}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C359E661-F086-4481-851E-11E2D3871294}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C359E661-F086-4481-851E-11E2D3871294}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C359E661-F086-4481-851E-11E2D3871294}.Debug|x64.Build.0 = Debug|Any CPU
+		{C359E661-F086-4481-851E-11E2D3871294}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C359E661-F086-4481-851E-11E2D3871294}.Debug|x86.Build.0 = Debug|Any CPU
+		{C359E661-F086-4481-851E-11E2D3871294}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C359E661-F086-4481-851E-11E2D3871294}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C359E661-F086-4481-851E-11E2D3871294}.Release|x64.ActiveCfg = Release|Any CPU
+		{C359E661-F086-4481-851E-11E2D3871294}.Release|x64.Build.0 = Release|Any CPU
+		{C359E661-F086-4481-851E-11E2D3871294}.Release|x86.ActiveCfg = Release|Any CPU
+		{C359E661-F086-4481-851E-11E2D3871294}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
