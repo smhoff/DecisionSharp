@@ -72,7 +72,7 @@ options.Jev.ApiKey = null; // Set one if your local service requires authenticat
 
 Base URIs may contain a path prefix; `https://host/service` sends to `https://host/service/v1/systemone`. Query strings, fragments and embedded credentials are rejected. Hosted configuration requires HTTPS and a bearer key. HTTP is permitted only with explicit local opt-in. The key is added per request, never to shared default headers.
 
-Retries are disabled by default. Enabling them permits at most two retries for transport failures and HTTP 408, 429, 500, 502, 503, 504 and 529, with exponential backoff/jitter starting at 200 ms and Retry-After support. Caller cancellation, authentication, validation and protocol failures are not retried. The default 30-second total budget covers attempts, waiting and response reads. `Jev.TotalTimeout` changes that budget. Circuit breaking is independently disabled by default; enable it and configure `CircuitFailureRatio`, `CircuitMinimumThroughput`, `CircuitSamplingDuration` and `CircuitBreakDuration` explicitly when needed. Microsoft resilience supplies the pipeline.
+Retries are disabled by default. Enabling them permits at most two retries for transport failures and HTTP 408, 429, 500, 502, 503, 504 and 529, with exponential backoff/jitter starting at 200 ms and Retry-After support. Caller cancellation, authentication, validation and protocol failures are not retried. The default 30-second total budget covers attempts, waiting and response reads. `Jev.TotalTimeout` changes that budget (supported range: 10 ms through 24 hours, matching the Microsoft pipeline). Circuit breaking is independently disabled by default; enable it and configure `CircuitFailureRatio`, `CircuitMinimumThroughput`, `CircuitSamplingDuration` and `CircuitBreakDuration` explicitly when needed. Microsoft resilience supplies the pipeline.
 
 Caching defaults to 1024 entries with five-minute absolute expiration when enabled; configure `Cache.Capacity` and `Cache.AbsoluteExpiration`. Cache keys hash the full effective serialized request, namespace, endpoint and provider. Only successful complete results enter the cache. Concurrent misses run separately so one caller's cancellation cannot affect another. Use explicit model versions for reproducible caching: aliases can change during a TTL. Change the namespace when tenant, credentials or policy context changes. Cache keys are never emitted in telemetry.
 
@@ -109,9 +109,22 @@ ActivitySource and Meter are named `DecisionSharp`. Instruments are `decision.ev
 
 ## Console example and verification
 
-For a hosted account, open `samples/DecisionSharp.Console/Properties/launchSettings.json` and fill in the empty `DECISIONSHARP_API_KEY` value. A local file is supplied in this workspace; from the source archive, copy `launchSettings.example.json` to `launchSettings.json` first. The local file is ignored by Git and excluded from the source archive. Run `dotnet run --project samples/DecisionSharp.Console --launch-profile "Hosted Jev" -- --smoke` after saving it. The profile supplies the hosted base URI and default model through .NET's native environment-variable support.
+Open `samples/DecisionSharp.Console/appsettings.json` and fill in `DecisionSharp.ApiKey`. The hosted base URI and model are already supplied. The local file is ignored by Git, copied to the console output directory, and excluded from source archives. From a fresh checkout/source archive, copy `appsettings.example.json` to `appsettings.json` first.
 
-Alternatively, set configuration in your shell or local run configuration. Keep API keys out of source control and command histories. `DECISIONSHARP_BASE_URI` and `DECISIONSHARP_MODEL` are required. Hosted calls also need `DECISIONSHARP_API_KEY`; local calls need `DECISIONSHARP_LOCAL=true`.
+```json
+{
+  "DecisionSharp": {
+    "BaseUri": "https://api.typesafe.ai/",
+    "Model": "jev-latest",
+    "ApiKey": "YOUR_KEY_HERE",
+    "AllowInsecureLocalEndpoint": false
+  }
+}
+```
+
+Run `dotnet run --project samples/DecisionSharp.Console -- --smoke` after saving it. Keep the real key only in the ignored local file; build outputs containing copied settings are also ignored and excluded from archives.
+
+Environment variables override JSON settings. `DECISIONSHARP_BASE_URI`, `DECISIONSHARP_MODEL`, `DECISIONSHARP_API_KEY` and `DECISIONSHARP_LOCAL` map to the four JSON properties. An explicitly empty key override clears the configured key. For a local service, set `AllowInsecureLocalEndpoint` to true (or `DECISIONSHARP_LOCAL=true`) and use its HTTP base URI. Hosted endpoints require an API key. Keep keys out of command histories.
 
 ```bash
 export DECISIONSHARP_BASE_URI=http://127.0.0.1:8017/

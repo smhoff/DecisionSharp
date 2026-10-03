@@ -19,27 +19,41 @@ public static class DecisionSharpServiceCollectionExtensions
         http.AddResilienceHandler("decision", pipeline =>
         {
             pipeline.AddTimeout(options.Jev.TotalTimeout);
-            if (options.EnableRetries) pipeline.AddRetry(new HttpRetryStrategyOptions
+            if (options.EnableRetries)
             {
-                MaxRetryAttempts = 2,
-                Delay = TimeSpan.FromMilliseconds(200),
-                BackoffType = DelayBackoffType.Exponential,
-                UseJitter = true,
-                ShouldRetryAfterHeader = true,
-                ShouldHandle = args => ValueTask.FromResult(!args.Context.CancellationToken.IsCancellationRequested && Transient(args.Outcome)),
-                OnRetry = args => { args.Outcome.Result?.Dispose(); return default; }
-            });
-            if (options.EnableCircuitBreaker) pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
+                pipeline.AddRetry(new HttpRetryStrategyOptions
+                {
+                    MaxRetryAttempts = 2,
+                    Delay = TimeSpan.FromMilliseconds(200),
+                    BackoffType = DelayBackoffType.Exponential,
+                    UseJitter = true,
+                    ShouldRetryAfterHeader = true,
+                    ShouldHandle = args => ValueTask.FromResult(!args.Context.CancellationToken.IsCancellationRequested && Transient(args.Outcome)),
+                    OnRetry = args => { args.Outcome.Result?.Dispose(); return default; }
+                });
+            }
+
+            if (options.EnableCircuitBreaker)
             {
-                FailureRatio = options.CircuitFailureRatio,
-                MinimumThroughput = options.CircuitMinimumThroughput,
-                SamplingDuration = options.CircuitSamplingDuration,
-                BreakDuration = options.CircuitBreakDuration,
-                ShouldHandle = args => ValueTask.FromResult(!args.Context.CancellationToken.IsCancellationRequested && Transient(args.Outcome))
-            });
+                pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
+                {
+                    FailureRatio = options.CircuitFailureRatio,
+                    MinimumThroughput = options.CircuitMinimumThroughput,
+                    SamplingDuration = options.CircuitSamplingDuration,
+                    BreakDuration = options.CircuitBreakDuration,
+                    ShouldHandle = args => ValueTask.FromResult(!args.Context.CancellationToken.IsCancellationRequested && Transient(args.Outcome))
+                });
+            }
         });
-        if (options.Cache.Enabled) services.AddSingleton<IDecisionEngine>(sp => new CachedDecisionEngine(sp.GetRequiredService<JevDecisionEngine>(), options.Jev, options.Cache));
-        else services.AddTransient<IDecisionEngine>(sp => sp.GetRequiredService<JevDecisionEngine>());
+        if (options.Cache.Enabled)
+        {
+            services.AddSingleton<IDecisionEngine>(sp => new CachedDecisionEngine(sp.GetRequiredService<JevDecisionEngine>(), options.Jev, options.Cache));
+        }
+        else
+        {
+            services.AddTransient<IDecisionEngine>(sp => sp.GetRequiredService<JevDecisionEngine>());
+        }
+
         return http;
     }
     private static bool Transient(Outcome<HttpResponseMessage> outcome) => outcome.Exception is HttpRequestException || (int?)outcome.Result?.StatusCode is 408 or 429 or 500 or 502 or 503 or 504 or 529;

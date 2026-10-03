@@ -6,24 +6,32 @@ using DecisionSharp.Jev;
 using DecisionSharp.Reranking;
 using Microsoft.Extensions.DependencyInjection;
 
-var baseUri = Environment.GetEnvironmentVariable("DECISIONSHARP_BASE_URI");
-var model = Environment.GetEnvironmentVariable("DECISIONSHARP_MODEL");
-if (string.IsNullOrWhiteSpace(baseUri) || string.IsNullOrWhiteSpace(model))
-{
-    Console.Error.WriteLine("Set DECISIONSHARP_BASE_URI and DECISIONSHARP_MODEL. Hosted endpoints also require DECISIONSHARP_API_KEY; local endpoints require DECISIONSHARP_LOCAL=true.");
-    return 1;
-}
 using var cancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
 try
 {
+    var settingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+    using var settings = JsonDocument.Parse(File.Exists(settingsPath) ? await File.ReadAllTextAsync(settingsPath, cancellation.Token) : "{}");
+    var section = settings.RootElement.TryGetProperty("DecisionSharp", out var configured) ? configured : default;
+    string? Setting(string environmentVariable, string property) => Environment.GetEnvironmentVariable(environmentVariable)
+        ?? (section.ValueKind == JsonValueKind.Object && section.TryGetProperty(property, out var value)
+            ? value.ValueKind == JsonValueKind.String ? value.GetString() : value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean().ToString() : null
+            : null);
+    var baseUri = Setting("DECISIONSHARP_BASE_URI", "BaseUri");
+    var model = Setting("DECISIONSHARP_MODEL", "Model");
+    if (string.IsNullOrWhiteSpace(baseUri) || string.IsNullOrWhiteSpace(model))
+    {
+        Console.Error.WriteLine("Set DecisionSharp.BaseUri and DecisionSharp.Model in appsettings.json, or DECISIONSHARP_BASE_URI and DECISIONSHARP_MODEL.");
+        return 1;
+    }
     var services = new ServiceCollection();
     services.AddDecisionSharp(options =>
     {
         options.Jev.BaseUri = new Uri(baseUri, UriKind.Absolute);
         options.Jev.DefaultModel = model;
-        options.Jev.ApiKey = Environment.GetEnvironmentVariable("DECISIONSHARP_API_KEY");
-        options.Jev.AllowInsecureLocalEndpoint = string.Equals(Environment.GetEnvironmentVariable("DECISIONSHARP_LOCAL"), "true", StringComparison.OrdinalIgnoreCase);
+        var apiKey = Setting("DECISIONSHARP_API_KEY", "ApiKey");
+        options.Jev.ApiKey = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey;
+        options.Jev.AllowInsecureLocalEndpoint = string.Equals(Setting("DECISIONSHARP_LOCAL", "AllowInsecureLocalEndpoint"), "true", StringComparison.OrdinalIgnoreCase);
         options.Jev.ProviderName = options.Jev.AllowInsecureLocalEndpoint ? "jevos" : "jev";
     });
     using var provider = services.BuildServiceProvider();
@@ -48,7 +56,10 @@ try
             row.TryGetProperty("metadata", out var metadata) ? metadata.EnumerateObject().ToDictionary(p => p.Name, p => p.Value) : null,
             row.TryGetProperty("retrievalScore", out var retrievalScore) ? retrievalScore.GetDouble() : null)).ToArray();
         var scored = await new EvidenceReranker(engine).RerankAsync("How are failed invoices handled?", evidence, cancellation.Token);
-        foreach (var item in scored) Console.WriteLine(FormattableString.Invariant($"{item.Evidence.Id}\trelevance={item.RelevanceProbability:F3}\tretrieval={item.Evidence.RetrievalScore}\tmodel={item.ResolvedModel}"));
+        foreach (var item in scored)
+        {
+            Console.WriteLine(FormattableString.Invariant($"{item.Evidence.Id}\trelevance={item.RelevanceProbability:F3}\tretrieval={item.Evidence.RetrievalScore}\tmodel={item.ResolvedModel}"));
+        }
     }
     return 0;
 }

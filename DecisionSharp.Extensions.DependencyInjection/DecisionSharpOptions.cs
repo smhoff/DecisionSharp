@@ -14,7 +14,11 @@ public sealed class DecisionSharpOptions
     internal DecisionSharpOptions Snapshot()
     {
         ArgumentNullException.ThrowIfNull(Jev); ArgumentNullException.ThrowIfNull(Cache);
-        if (EnableCircuitBreaker && (!double.IsFinite(CircuitFailureRatio) || CircuitFailureRatio <= 0 || CircuitFailureRatio > 1 || CircuitMinimumThroughput < 2 || CircuitSamplingDuration < TimeSpan.FromMilliseconds(500) || CircuitBreakDuration < TimeSpan.FromMilliseconds(500))) throw new ArgumentException("Invalid circuit-breaker settings.");
+        if (EnableCircuitBreaker && (!double.IsFinite(CircuitFailureRatio) || CircuitFailureRatio <= 0 || CircuitFailureRatio > 1 || CircuitMinimumThroughput < 2 || CircuitSamplingDuration < TimeSpan.FromMilliseconds(500) || CircuitBreakDuration < TimeSpan.FromMilliseconds(500)))
+        {
+            throw new ArgumentException("Invalid circuit-breaker settings.");
+        }
+
         return new DecisionSharpOptions { Jev = Jev.Snapshot(), EnableRetries = EnableRetries, EnableCircuitBreaker = EnableCircuitBreaker, CircuitFailureRatio = CircuitFailureRatio, CircuitMinimumThroughput = CircuitMinimumThroughput, CircuitSamplingDuration = CircuitSamplingDuration, CircuitBreakDuration = CircuitBreakDuration, Cache = Cache.Snapshot() };
     }
 }
@@ -26,7 +30,13 @@ public sealed class DecisionCacheOptions
     public TimeSpan AbsoluteExpiration { get; set; } = TimeSpan.FromMinutes(5);
     internal DecisionCacheOptions Snapshot()
     {
-        if (Enabled) { ArgumentException.ThrowIfNullOrWhiteSpace(Namespace); if (Capacity <= 0 || AbsoluteExpiration <= TimeSpan.Zero) throw new ArgumentException("Invalid cache capacity or expiration."); }
+        if (Enabled)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(Namespace); if (Capacity <= 0 || AbsoluteExpiration <= TimeSpan.Zero)
+            {
+                throw new ArgumentException("Invalid cache capacity or expiration.");
+            }
+        }
         return new DecisionCacheOptions { Enabled = Enabled, Namespace = Namespace, Capacity = Capacity, AbsoluteExpiration = AbsoluteExpiration };
     }
 }

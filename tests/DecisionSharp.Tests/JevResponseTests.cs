@@ -87,6 +87,44 @@ public class JevResponseTests
         await Assert.ThrowsAsync<DecisionTimeoutException>(() => TestData.Engine(handler, TestData.Options(TimeSpan.FromMilliseconds(30))).EvaluateAsync(TestData.Request()));
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(30)); await Assert.ThrowsAnyAsync<OperationCanceledException>(() => TestData.Engine(handler).EvaluateAsync(TestData.Request(), cts.Token));
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StreamingLimitStopsAtLimitPlusOneWithoutTrustingHeaders(bool misleadingLength)
+    {
+        var stream = new UnseekableCountingStream(Encoding.UTF8.GetBytes(TestData.SingleResponse + new string(' ', 1000)));
+        var content = new StreamContent(stream);
+        if (misleadingLength)
+        {
+            content.Headers.ContentLength = 1;
+        }
+        else
+        {
+            Assert.Null(content.Headers.ContentLength);
+        }
+
+        var handler = new StubHttpHandler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content }));
+        var options = TestData.Options(); options.ResponseByteLimit = 128;
+        await Assert.ThrowsAsync<DecisionProtocolException>(() => TestData.Engine(handler, options).EvaluateAsync(TestData.SingleRequest()));
+        Assert.Equal(129, stream.BytesRead);
+    }
+    [Fact]
+    public async Task ResponseReturnedAfterDeadlineRemainsTimeout()
+    {
+        var handler = new StubHttpHandler(async (_, _) => { await Task.Delay(60); return TestData.Response(status: HttpStatusCode.Unauthorized); });
+        await Assert.ThrowsAsync<DecisionTimeoutException>(() => TestData.Engine(handler, TestData.Options(TimeSpan.FromMilliseconds(20))).EvaluateAsync(TestData.Request()));
+    }
+    private sealed class UnseekableCountingStream(byte[] bytes) : MemoryStream(bytes)
+    {
+        public override bool CanSeek => false;
+        public int BytesRead { get; private set; }
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            var count = await base.ReadAsync(buffer, cancellationToken);
+            BytesRead += count;
+            return count;
+        }
+    }
     private sealed class StalledStream : MemoryStream
     { public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default) { await Task.Delay(Timeout.Infinite, token); return 0; } }
 }

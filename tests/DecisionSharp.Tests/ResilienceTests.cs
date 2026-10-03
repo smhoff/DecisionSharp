@@ -51,7 +51,12 @@ public class ResilienceTests
     [Fact]
     public async Task TransportFailureRetriedButProtocolFailureIsNot()
     {
-        var n = 0; var handler = new StubHttpHandler((_, _) => Interlocked.Increment(ref n) == 1 ? Task.FromException<HttpResponseMessage>(new HttpRequestException("offline")) : Task.FromResult(TestData.Response())); using (var p = Provider(handler, o => o.EnableRetries = true)) Assert.Equal("resolved-v1", (await p.GetRequiredService<IDecisionEngine>().EvaluateAsync(TestData.Request())).Model); Assert.Equal(2, handler.Calls);
+        var n = 0; var handler = new StubHttpHandler((_, _) => Interlocked.Increment(ref n) == 1 ? Task.FromException<HttpResponseMessage>(new HttpRequestException("offline")) : Task.FromResult(TestData.Response())); using (var p = Provider(handler, o => o.EnableRetries = true))
+        {
+            Assert.Equal("resolved-v1", (await p.GetRequiredService<IDecisionEngine>().EvaluateAsync(TestData.Request())).Model);
+        }
+
+        Assert.Equal(2, handler.Calls);
         handler = new StubHttpHandler((_, _) => Task.FromResult(TestData.Response("{}"))); using var provider = Provider(handler, o => o.EnableRetries = true); await Assert.ThrowsAsync<DecisionProtocolException>(() => provider.GetRequiredService<IDecisionEngine>().EvaluateAsync(TestData.Request())); Assert.Equal(1, handler.Calls);
     }
     [Theory]
@@ -80,7 +85,11 @@ public class ResilienceTests
     {
         var handler = new StubHttpHandler((_, _) => Task.FromResult(TestData.Response(status: HttpStatusCode.ServiceUnavailable)));
         using var p = Provider(handler, o => { o.EnableCircuitBreaker = true; o.CircuitMinimumThroughput = 2; }); var engine = p.GetRequiredService<IDecisionEngine>();
-        for (var i = 0; i < 2; i++) await Assert.ThrowsAsync<DecisionServiceException>(() => engine.EvaluateAsync(TestData.Request()));
+        for (var i = 0; i < 2; i++)
+        {
+            await Assert.ThrowsAsync<DecisionServiceException>(() => engine.EvaluateAsync(TestData.Request()));
+        }
+
         await Assert.ThrowsAsync<BrokenCircuitException>(() => engine.EvaluateAsync(TestData.Request())); Assert.Equal(2, handler.Calls);
     }
     [Fact]
@@ -89,4 +98,96 @@ public class ResilienceTests
         var services = new ServiceCollection(); Assert.ThrowsAny<ArgumentException>(() => services.AddDecisionSharp(o => o.Jev.ApiKey = null));
         Assert.ThrowsAny<ArgumentException>(() => services.AddDecisionSharp(o => { o.Jev.ApiKey = "key"; o.EnableCircuitBreaker = true; o.CircuitFailureRatio = 2; }));
     }
+    [Theory]
+    [InlineData(0.001)]
+    [InlineData(172800)]
+    public void UnsupportedTimeoutsFailImmediatelyForDirectAndDi(double seconds)
+    {
+        var options = TestData.Options(TimeSpan.FromSeconds(seconds));
+        Assert.ThrowsAny<ArgumentException>(() => TestData.Engine(new StubHttpHandler((_, _) => Task.FromResult(TestData.Response())), options));
+        var services = new ServiceCollection();
+        Assert.ThrowsAny<ArgumentException>(() => services.AddDecisionSharp(o => o.Jev = options));
+    }
+    [Fact]
+    public async Task RetryWaitingAndFinalBodyShareOneDeadline()
+    {
+        var calls = 0; var warming = true;
+        var handler = new StubHttpHandler((_, _) =>
+        {
+            if (warming)
+            {
+                return Task.FromResult(TestData.Response());
+            }
+
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                var retry = TestData.Response(status: HttpStatusCode.TooManyRequests);
+                retry.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromMilliseconds(40));
+                return Task.FromResult(retry);
+            }
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StalledBody()) });
+        });
+        using var p = Provider(handler, o => { o.EnableRetries = true; o.Jev.TotalTimeout = TimeSpan.FromMilliseconds(500); });
+        var engine = p.GetRequiredService<IDecisionEngine>();
+        await engine.EvaluateAsync(TestData.Request()); warming = false;
+        var start = Stopwatch.StartNew();
+        await Assert.ThrowsAsync<DecisionTimeoutException>(() => engine.EvaluateAsync(TestData.Request()).WaitAsync(TimeSpan.FromMilliseconds(1500)));
+        Assert.Equal(2, calls);
+        Assert.True(start.Elapsed < TimeSpan.FromMilliseconds(1200));
+    }
+    private sealed class StalledBody : MemoryStream
+    {
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        { await Task.Delay(Timeout.Infinite, cancellationToken); return 0; }
+    }
+    [Fact]
+    public async Task DefaultRegisteredHandlerDoesNotFollowRedirectsToAnotherOrigin()
+    {
+        static System.Net.HttpListener Listen()
+        {
+            using var socket = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+            socket.Start(); var port = ((System.Net.IPEndPoint)socket.LocalEndpoint).Port; socket.Stop();
+            var listener = new System.Net.HttpListener(); listener.Prefixes.Add($"http://127.0.0.1:{port}/"); listener.Start(); return listener;
+        }
+        using var origin = Listen(); using var destination = Listen();
+        var destinationRequest = destination.GetContextAsync();
+        var originTask = Task.Run(async () =>
+        {
+            var context = await origin.GetContextAsync();
+            Assert.Equal("Bearer synthetic-key", context.Request.Headers["Authorization"]);
+            context.Response.StatusCode = 307;
+            context.Response.RedirectLocation = destination.Prefixes.Single() + "v1/systemone";
+            context.Response.Close();
+        });
+        var services = new ServiceCollection();
+        services.AddDecisionSharp(o => { o.Jev.BaseUri = new Uri(origin.Prefixes.Single()); o.Jev.AllowInsecureLocalEndpoint = true; o.Jev.ApiKey = "synthetic-key"; });
+        using var provider = services.BuildServiceProvider();
+        var evaluation = provider.GetRequiredService<IDecisionEngine>().EvaluateAsync(TestData.Request());
+        // If redirects are accidentally enabled, complete the destination response so the test fails promptly.
+        var winner = await Task.WhenAny(evaluation, destinationRequest).WaitAsync(TimeSpan.FromSeconds(3));
+        if (winner == destinationRequest)
+        {
+            var received = await destinationRequest;
+            var bytes = System.Text.Encoding.UTF8.GetBytes(TestData.Fixture("response.json"));
+            received.Response.ContentLength64 = bytes.Length; await received.Response.OutputStream.WriteAsync(bytes); received.Response.Close();
+        }
+        await originTask;
+        var error = await Assert.ThrowsAsync<DecisionServiceException>(() => evaluation);
+        Assert.Equal(307, (int)error.StatusCode);
+        Assert.False(destinationRequest.IsCompleted);
+        destination.Close();
+        try { await destinationRequest; } catch (System.Net.HttpListenerException) { } catch (ObjectDisposedException) { }
+    }
+
+    [Theory]
+    [InlineData(0.01)]
+    [InlineData(86400)]
+    public void SupportedTimeoutBoundariesResolveDirectAndDiClients(double seconds)
+    {
+        var handler = new StubHttpHandler((_, _) => Task.FromResult(TestData.Response()));
+        Assert.NotNull(TestData.Engine(handler, TestData.Options(TimeSpan.FromSeconds(seconds))));
+        using var p = Provider(handler, o => o.Jev.TotalTimeout = TimeSpan.FromSeconds(seconds));
+        Assert.NotNull(p.GetRequiredService<IDecisionEngine>());
+    }
+
 }
