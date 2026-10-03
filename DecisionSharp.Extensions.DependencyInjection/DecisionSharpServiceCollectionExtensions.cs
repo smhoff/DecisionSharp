@@ -30,7 +30,8 @@ public static class DecisionSharpServiceCollectionExtensions
                 ShouldHandle=args=>ValueTask.FromResult(!args.Context.CancellationToken.IsCancellationRequested && Transient(args.Outcome))
             });
         });
-        services.AddTransient<IDecisionEngine>(sp=>sp.GetRequiredService<JevDecisionEngine>());
+        if(options.Cache.Enabled)services.AddSingleton<IDecisionEngine>(sp=>new CachedDecisionEngine(sp.GetRequiredService<JevDecisionEngine>(),options.Jev,options.Cache));
+        else services.AddTransient<IDecisionEngine>(sp=>sp.GetRequiredService<JevDecisionEngine>());
         return http;
     }
     private static bool Transient(Outcome<HttpResponseMessage> outcome)=>outcome.Exception is HttpRequestException || (int?)outcome.Result?.StatusCode is 408 or 429 or 500 or 502 or 503 or 504 or 529;
