@@ -1,7 +1,7 @@
 # DecisionSharp — design specification
 
 Date: 2026-10-03
-Status: proposed specification; package structure approved, awaiting specification review.
+Status: approved specification; implementation verified locally and against hosted Jev on 2026-10-03. CI validation remains pending.
 
 ## Purpose and success
 

@@ -9,3 +9,5 @@ artifacts/
 *.suo
 .env.*
 **/Properties/launchSettings.json
+samples/DecisionSharp.Console/appsettings.json
+**/Properties/launchSettings.json.retired

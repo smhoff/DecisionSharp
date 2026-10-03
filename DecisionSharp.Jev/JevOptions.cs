@@ -32,7 +32,7 @@ public sealed class JevOptions
             throw new ArgumentOutOfRangeException(nameof(ResponseByteLimit));
         }
 
-        if (TotalTimeout <= TimeSpan.Zero || TotalTimeout.TotalMilliseconds > uint.MaxValue - 1)
+        if (TotalTimeout < TimeSpan.FromMilliseconds(10) || TotalTimeout > TimeSpan.FromHours(24))
         {
             throw new ArgumentOutOfRangeException(nameof(TotalTimeout));
         }
