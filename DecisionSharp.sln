@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DecisionSharp.Tests", "test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DecisionSharp.Jev", "DecisionSharp.Jev\DecisionSharp.Jev.csproj", "{6A58BD02-953F-413B-BA3A-0C004B4910C4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DecisionSharp.Extensions.DependencyInjection", "DecisionSharp.Extensions.DependencyInjection\DecisionSharp.Extensions.DependencyInjection.csproj", "{AAD1CC50-71C8-4384-A823-28E7855EED6C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -59,6 +61,18 @@ Global
 		{6A58BD02-953F-413B-BA3A-0C004B4910C4}.Release|x64.Build.0 = Release|Any CPU
 		{6A58BD02-953F-413B-BA3A-0C004B4910C4}.Release|x86.ActiveCfg = Release|Any CPU
 		{6A58BD02-953F-413B-BA3A-0C004B4910C4}.Release|x86.Build.0 = Release|Any CPU
+		{AAD1CC50-71C8-4384-A823-28E7855EED6C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AAD1CC50-71C8-4384-A823-28E7855EED6C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AAD1CC50-71C8-4384-A823-28E7855EED6C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{AAD1CC50-71C8-4384-A823-28E7855EED6C}.Debug|x64.Build.0 = Debug|Any CPU
+		{AAD1CC50-71C8-4384-A823-28E7855EED6C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{AAD1CC50-71C8-4384-A823-28E7855EED6C}.Debug|x86.Build.0 = Debug|Any CPU
+		{AAD1CC50-71C8-4384-A823-28E7855EED6C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AAD1CC50-71C8-4384-A823-28E7855EED6C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AAD1CC50-71C8-4384-A823-28E7855EED6C}.Release|x64.ActiveCfg = Release|Any CPU
+		{AAD1CC50-71C8-4384-A823-28E7855EED6C}.Release|x64.Build.0 = Release|Any CPU
+		{AAD1CC50-71C8-4384-A823-28E7855EED6C}.Release|x86.ActiveCfg = Release|Any CPU
+		{AAD1CC50-71C8-4384-A823-28E7855EED6C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
