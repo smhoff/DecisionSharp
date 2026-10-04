@@ -3,6 +3,8 @@ using DecisionSharp.Core;
 using DecisionSharp.Jev;
 namespace DecisionSharp.Tests;
 
+using Core.Questions;
+
 internal sealed class StubHttpHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
 {
     public int Calls;

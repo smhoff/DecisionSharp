@@ -4,6 +4,9 @@ using DecisionSharp.Core;
 
 namespace DecisionSharp.Reranking;
 
+using Core.Answers;
+using Core.Questions;
+
 /// <summary>
 /// Provides functionalities for re-ranking a list of evidence based on their relevance to a given query.
 /// The class ensures stable ordering, applies relevance thresholds, and supports parallel processing
@@ -70,12 +73,11 @@ public sealed class EvidenceReranker
         }
 
         var results = new ScoredEvidence[candidates.Length];
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         ExceptionDispatchInfo? firstFailure = null;
         try
         {
             await Parallel.ForEachAsync(Enumerable.Range(0, candidates.Length),
-                new ParallelOptions { MaxDegreeOfParallelism = options.Concurrency, CancellationToken = stop.Token },
+                new ParallelOptions { MaxDegreeOfParallelism = options.Concurrency, CancellationToken = cancellationToken },
                 async (index, token) =>
                 {
                     try
@@ -95,12 +97,13 @@ public sealed class EvidenceReranker
                     }
                     catch (Exception ex)
                     {
-                        if (!(ex is OperationCanceledException && stop.IsCancellationRequested))
+                        // Parallel.ForEachAsync cancels token for the caller and after any body throws.
+                        if (ex is OperationCanceledException && token.IsCancellationRequested)
                         {
-                            Interlocked.CompareExchange(ref firstFailure, ExceptionDispatchInfo.Capture(ex), null);
-                            await stop.CancelAsync();
+                            throw;
                         }
 
+                        Interlocked.CompareExchange(ref firstFailure, ExceptionDispatchInfo.Capture(ex), null);
                         throw;
                     }
                 }).ConfigureAwait(false);

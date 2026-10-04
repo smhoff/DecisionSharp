@@ -42,5 +42,9 @@ public sealed class ScoredEvidence
     /// This class encapsulates an instance of the Evidence object, its relevance probability,
     /// and the resolved model used for scoring.
     internal ScoredEvidence(Evidence evidence, double relevanceProbability, string resolvedModel)
-    { this.Evidence = evidence; this.RelevanceProbability = relevanceProbability; this.ResolvedModel = resolvedModel; }
+    {
+        this.Evidence = evidence;
+        this.RelevanceProbability = relevanceProbability;
+        this.ResolvedModel = resolvedModel;
+    }
 }

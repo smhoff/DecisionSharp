@@ -31,6 +31,7 @@ public sealed class JevDecisionEngine : IDecisionEngine
         var outcome = "success";
         var types = request.Questions.Values.Select(JevWire.TypeName).Distinct().ToArray();
         var questionType = types.Length == 1 ? types[0] : "mixed";
+
         void CheckDeadline()
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -38,6 +39,7 @@ public sealed class JevDecisionEngine : IDecisionEngine
             {
                 throw new DecisionTimeoutException();
             }
+
             deadline.Token.ThrowIfCancellationRequested();
         }
 

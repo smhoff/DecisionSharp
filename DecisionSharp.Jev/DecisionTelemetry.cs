@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+
 namespace DecisionSharp.Jev;
 
 /// <summary>

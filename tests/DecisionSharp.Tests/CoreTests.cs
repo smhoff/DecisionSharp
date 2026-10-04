@@ -2,6 +2,9 @@ using System.Text.Json;
 using DecisionSharp.Core;
 namespace DecisionSharp.Tests;
 
+using Core.Answers;
+using Core.Questions;
+
 public class CoreTests
 {
     public static JsonElement Json(string value) => JsonDocument.Parse(value).RootElement.Clone();

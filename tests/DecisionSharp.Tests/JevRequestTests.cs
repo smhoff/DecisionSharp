@@ -4,6 +4,9 @@ using DecisionSharp.Core;
 using DecisionSharp.Jev;
 namespace DecisionSharp.Tests;
 
+using Core.Answers;
+using Core.Questions;
+
 public class JevRequestTests
 {
     [Fact]

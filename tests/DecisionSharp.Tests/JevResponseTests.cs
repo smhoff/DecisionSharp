@@ -5,6 +5,8 @@ using DecisionSharp.Core;
 using DecisionSharp.Jev;
 namespace DecisionSharp.Tests;
 
+using Core.Answers;
+
 public class JevResponseTests
 {
     [Fact]

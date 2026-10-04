@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
 using DecisionSharp.Core;
+using DecisionSharp.Core.Answers;
+using DecisionSharp.Core.Questions;
 using DecisionSharp.Extensions.DependencyInjection;
 using DecisionSharp.Jev;
 using DecisionSharp.Reranking;

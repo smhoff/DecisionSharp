@@ -4,6 +4,8 @@ using DecisionSharp.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 namespace DecisionSharp.Tests;
 
+using Core.Questions;
+
 public class CacheTests
 {
     private static DecisionRequest Request(int state) => new(CoreTests.Json("{\"state\":" + state + "}"), new Dictionary<string, DecisionQuestion> { ["q"] = new YesNoQuestion("Relevant?") });

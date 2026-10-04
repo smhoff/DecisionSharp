@@ -3,6 +3,8 @@ using DecisionSharp.Core;
 using DecisionSharp.Reranking;
 namespace DecisionSharp.Tests;
 
+using Core.Answers;
+
 public class RerankingTests
 {
     private sealed class Engine(Func<DecisionRequest, CancellationToken, Task<DecisionResult>> evaluate) : IDecisionEngine
