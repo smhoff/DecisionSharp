@@ -76,26 +76,228 @@ Retries are disabled by default. Enabling them permits at most two retries for t
 
 Caching defaults to 1024 entries with five-minute absolute expiration when enabled; configure `Cache.Capacity` and `Cache.AbsoluteExpiration`. Cache keys hash the full effective serialized request, namespace, endpoint and provider. Only successful complete results enter the cache. Concurrent misses run separately so one caller's cancellation cannot affect another. Use explicit model versions for reproducible caching: aliases can change during a TTL. Change the namespace when tenant, credentials or policy context changes. Cache keys are never emitted in telemetry.
 
-## Reranking retrieved evidence
+## How to use DecisionSharp in your solution
+
+Use DecisionSharp after your existing search retrieves candidates: retrieve → map to `Evidence` → rerank with Jev → use the returned content in your answer or search results. DecisionSharp does not retrieve documents or generate an answer. The reranker sends each candidate's query and content to Jev; IDs, metadata and original retrieval scores stay in your application.
+
+### 1. Add the packages
+
+Build the local packages from the DecisionSharp repository:
+
+```bash
+dotnet pack DecisionSharp.sln -c Release -o artifacts/packages
+```
+
+In your consuming .NET 8 or later project, add that folder as a NuGet source alongside nuget.org. Replace the path below with the absolute path to your checkout:
+
+```bash
+dotnet nuget add source /absolute/path/DecisionSharp/artifacts/packages --name DecisionSharpLocal
+dotnet add package DecisionSharp.Jev --version 0.1.0
+dotnet add package DecisionSharp.Reranking --version 0.1.0
+```
+
+`DecisionSharp.Core` is included transitively. For the dependency-injection example below, also add:
+
+```bash
+dotnet add package DecisionSharp.Extensions.DependencyInjection --version 0.1.0
+```
+
+The packages are currently local artifacts, so installing only from nuget.org is insufficient. If you use project references instead, reference the corresponding library projects in this repository.
+
+### 2. Configure the hosted Jev provider
+
+Create an `appsettings.json` in your application directory. The console walkthrough also reads the `Weaviate` section:
+
+```json
+{
+  "DecisionSharp": {
+    "BaseUri": "https://api.typesafe.ai/",
+    "Model": "jev-latest",
+    "ApiKey": ""
+  },
+  "Weaviate": {
+    "Hostname": "YOUR_CLUSTER_HOSTNAME.weaviate.cloud",
+    "ApiKey": "",
+    "Collection": "KnowledgeChunk"
+  }
+}
+```
+
+For local development, put your Jev key in `DecisionSharp.ApiKey` in an ignored local settings file; commit only a blank example. Add `/appsettings.json` to your application's `.gitignore` if that file contains the key. If your application tracks non-secret `appsettings.json`, keep its key blank and supply the key through environment configuration instead. The console example uses `DECISIONSHARP_API_KEY`; ASP.NET Core uses `DecisionSharp__ApiKey`. Put the Weaviate key in the ignored file too, or override it with `WEAVIATE_API_KEY` in the console example. Use the bare Weaviate hostname without `https://`. The library itself does not load configuration files: your application maps settings into `JevOptions`.
+
+### 3. Retrieve from Weaviate, then rerank with Jev in a console application
+
+Create a console project with `dotnet new console -n SearchDemo --framework net8.0`, install the two DecisionSharp packages above, and add the official Weaviate client to this consuming application:
+
+```bash
+dotnet add package Weaviate.Client --version 1.2.0
+```
+
+This client requires Weaviate 1.32 or later and a reachable gRPC endpoint. The walkthrough connects to Weaviate Cloud. See the [Weaviate C# client documentation](https://docs.weaviate.io/weaviate/client-libraries/csharp) for connection requirements.
+
+Use an existing populated `KnowledgeChunk` collection with text properties `content` and `source`, and a single Weaviate Embeddings text vectorizer configured to embed `content`. For example, store a chunk about checking payment methods and retrying failed invoices, with `source` set to `runbooks/billing.md`. `NearText` uses the collection's vectorizer to embed the query and retrieve nearby vectors. See [Weaviate vector search](https://docs.weaviate.io/weaviate/search/similarity) for query behavior and vector configuration.
+
+Replace `Program.cs` with this code. Run `dotnet run -- "How should we handle a failed invoice?"` from the project's directory so it can read your `appsettings.json`.
 
 ```csharp
+using System.Text.Json;
+using DecisionSharp.Core;
+using DecisionSharp.Jev;
 using DecisionSharp.Reranking;
+using Weaviate.Client;
+using Weaviate.Client.Models;
 
-// Map the results your existing Weaviate retrieval already returned.
-var evidence = retrievedRows.Select(row =>
-    new Evidence(row.Id, row.Content, row.Metadata, row.RetrievalScore)).ToArray();
+using var cancellation = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
+using var settings = JsonDocument.Parse(await File.ReadAllTextAsync("appsettings.json"));
+var jevConfig = settings.RootElement.GetProperty("DecisionSharp");
+var vectorConfig = settings.RootElement.GetProperty("Weaviate");
+var query = args.Length > 0 ? string.Join(" ", args) : "How should we handle a failed invoice?";
+
+// Step 1: Weaviate performs vector retrieval and returns up to 20 chunks.
+using var weaviate = await Connect.Cloud(
+    vectorConfig.GetProperty("Hostname").GetString()!,
+    Environment.GetEnvironmentVariable("WEAVIATE_API_KEY")
+        ?? vectorConfig.GetProperty("ApiKey").GetString()!);
+var collection = weaviate.Collections.Use(vectorConfig.GetProperty("Collection").GetString()!);
+var retrieved = await collection.Query.NearText(query,
+    limit: 20,
+    returnProperties: ["content", "source"],
+    returnMetadata: MetadataOptions.Distance,
+    cancellationToken: cancellation.Token);
+
+// Step 2: Map actual Weaviate results into DecisionSharp's immutable evidence.
+var candidates = retrieved.Objects.Select(hit => new Evidence(
+    id: hit.UUID.ToString()!,
+    content: hit.Properties["content"]?.ToString()!,
+    metadata: new Dictionary<string, JsonElement>
+    {
+        ["source"] = JsonSerializer.SerializeToElement(hit.Properties["source"])
+    },
+    retrievalScore: hit.Metadata.Distance)).ToArray();
+
+// Step 3: Jev scores each chunk's relevance to the same query.
+using var http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false })
+{
+    Timeout = Timeout.InfiniteTimeSpan
+};
+IDecisionEngine engine = new JevDecisionEngine(http, new JevOptions
+{
+    BaseUri = new Uri(jevConfig.GetProperty("BaseUri").GetString()!),
+    DefaultModel = jevConfig.GetProperty("Model").GetString()!,
+    ApiKey = Environment.GetEnvironmentVariable("DECISIONSHARP_API_KEY")
+        ?? jevConfig.GetProperty("ApiKey").GetString(),
+    TotalTimeout = TimeSpan.FromSeconds(30)
+});
 var reranker = new EvidenceReranker(engine, new RerankingOptions
 {
     Concurrency = 4,
-    Threshold = 0.75, // Example only: calibrate on your labeled retrieval data.
-    TopK = 10
+    TopK = 5
 });
-var ranked = await reranker.RerankAsync(query, evidence, cancellationToken);
+var ranked = await reranker.RerankAsync(query, candidates, cancellation.Token);
+
+foreach (var hit in ranked)
+{
+    Console.WriteLine($"{hit.Evidence.Id}: relevance={hit.RelevanceProbability:F3}, " +
+        $"vectorDistance={hit.Evidence.RetrievalScore}, model={hit.ResolvedModel}");
+}
+// Step 4: Use the five best chunks, in Jev's order, as answer context.
+var context = string.Join("\n\n", ranked.Select(hit => hit.Evidence.Content));
+Console.WriteLine(context);
 ```
 
-Each candidate gets its own query/content state and relevance question. Results sort by relevance probability, then original position for ties. Threshold filtering is inclusive and occurs before top-K. With no threshold/top-K, all candidates are returned. Original retrieval scores and snapshotted source metadata remain separate and unchanged. Empty input makes no calls; malformed inputs fail before any evaluation.
+Weaviate supplies the candidate pool; Jev can change its ordering based on relevance to the query. The example preserves Weaviate's raw vector distance in `Evidence.RetrievalScore`: lower distance means closer vectors, while higher `RelevanceProbability` means greater Jev relevance. These are separate measurements, and no conversion or combination is applied. `TopK = 5` selects from the 20 retrieved chunks after scoring them all; increase the retrieval limit when relevant chunks are missing from the candidate pool. Each returned `ScoredEvidence` also carries source metadata and the provider's `ResolvedModel`.
 
-A candidate failure cancels queued/in-flight siblings, waits for started workers and fails the whole rerank with the originating error. Caller cancellation propagates as cancellation. No failed item is silently removed or assigned a fabricated score. Relevance is not proof of truth, freshness, authorization or answerability; evaluate model quality and choose thresholds using the company's own labeled examples.
+### 4. Use the Jev reranker in an ASP.NET Core application
+
+In a .NET 8 or later ASP.NET Core project, install the packages above and use the same JSON configuration. ASP.NET Core loads `appsettings.json` and environment overrides automatically. This complete `Program.cs` registers the provider and reranker, then exposes an endpoint accepting candidates from your existing search:
+
+```csharp
+using System.Text.Json;
+using DecisionSharp.Core;
+using DecisionSharp.Extensions.DependencyInjection;
+using DecisionSharp.Reranking;
+
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddDecisionSharp(options =>
+{
+    options.Jev.BaseUri = new Uri(builder.Configuration["DecisionSharp:BaseUri"]!);
+    options.Jev.DefaultModel = builder.Configuration["DecisionSharp:Model"]!;
+    options.Jev.ApiKey = builder.Configuration["DecisionSharp:ApiKey"];
+    options.Jev.TotalTimeout = TimeSpan.FromSeconds(30);
+});
+builder.Services.AddTransient<EvidenceReranker>(services => new EvidenceReranker(
+    services.GetRequiredService<IDecisionEngine>(), new RerankingOptions
+    {
+        Concurrency = 4,
+        Threshold = 0.70, // Illustrative; calibrate using your own labeled queries.
+        TopK = 5
+    }));
+
+var app = builder.Build();
+app.MapPost("/search/rerank", async (
+    RerankRequest request, EvidenceReranker reranker, CancellationToken cancellationToken) =>
+{
+    var candidates = request.Hits.Select(hit => new Evidence(
+        hit.Id, hit.Content,
+        new Dictionary<string, JsonElement>
+        {
+            ["source"] = JsonSerializer.SerializeToElement(hit.Source)
+        },
+        hit.RetrievalScore)).ToArray();
+    var ranked = await reranker.RerankAsync(request.Query, candidates, cancellationToken);
+    return Results.Ok(ranked.Select(hit => new
+    {
+        id = hit.Evidence.Id,
+        content = hit.Evidence.Content,
+        source = hit.Evidence.Metadata!["source"].GetString(),
+        retrievalScore = hit.Evidence.RetrievalScore,
+        relevanceProbability = hit.RelevanceProbability,
+        resolvedModel = hit.ResolvedModel
+    }));
+});
+app.Run();
+
+public sealed record SearchHit(string Id, string Content, string Source, double? RetrievalScore);
+public sealed record RerankRequest(string Query, SearchHit[] Hits);
+```
+
+For example, POST this JSON to `/search/rerank` with `Content-Type: application/json`:
+
+```json
+{
+  "query": "How should we handle a failed invoice?",
+  "hits": [
+    {
+      "id": "weather",
+      "content": "Tomorrow will be sunny with light winds.",
+      "source": "weather/tomorrow.md",
+      "retrievalScore": 0.92
+    },
+    {
+      "id": "billing-runbook",
+      "content": "Check the payment method, retry collection, and escalate repeated invoice failures to billing.",
+      "source": "runbooks/billing.md",
+      "retrievalScore": 0.81
+    }
+  ]
+}
+```
+
+The response is an array in descending relevance order; candidates below `0.70` are omitted. In an existing search endpoint, use the same `Select` mapping on the rows returned by your search client, call the injected reranker, and return its results or build answer context from `hit.Evidence.Content`. Map a document ID, text chunk, optional metadata and optional retrieval score; use a unique ID for each chunk. The Weaviate client is a dependency of the consuming console application; DecisionSharp itself has no vector-store dependency.
+
+### 5. Choose limits and handle failures
+
+| Setting | Effect |
+| --- | --- |
+| `Concurrency = 4` | At most four candidate evaluations at once **per rerank call**; concurrent requests can make more calls in aggregate. |
+| `TopK = 5` | Return at most five results after scoring and threshold filtering; every candidate still needs evaluation. |
+| `Threshold = 0.70` | Include relevance probabilities greater than or equal to 0.70; choose the cutoff using labeled data. |
+| `Jev.TotalTimeout` | Budget for each candidate evaluation, including retries and response reads; it is not a deadline for the whole batch. |
+
+Omit `Threshold` to keep low-scoring results, and omit `TopK` to return all qualifying candidates. Equal relevance scores retain input order. Original retrieval scores and snapshotted metadata remain unchanged. Empty input makes no calls; malformed inputs fail before evaluation. For a whole-search deadline, pass a cancellation token with your application's deadline to `RerankAsync`; the ASP.NET Core example passes the request cancellation token.
+
+A candidate failure cancels sibling work and fails the whole rerank; it does not return partial results or fabricate a relevance score. Handle the exceptions described below at your application's boundary. Retries and caching are off by default; configure them through `AddDecisionSharp` as described above when needed. Each candidate normally causes one Jev request, and retries can add billable requests. Relevance does not establish truth, freshness, access permission or answerability; check those before using retrieved content.
 
 ## Failures and telemetry
 
