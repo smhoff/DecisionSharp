@@ -31,16 +31,6 @@ public sealed class JevDecisionEngine : IDecisionEngine
         var outcome = "success";
         var types = request.Questions.Values.Select(JevWire.TypeName).Distinct().ToArray();
         var questionType = types.Length == 1 ? types[0] : "mixed";
-        void CheckDeadline()
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (Stopwatch.GetElapsedTime(start) >= options.TotalTimeout)
-            {
-                throw new DecisionTimeoutException();
-            }
-            deadline.Token.ThrowIfCancellationRequested();
-        }
-
         try
         {
             using var message = new HttpRequestMessage(HttpMethod.Post, new Uri(options.BaseUri, "v1/systemone"));
@@ -53,7 +43,6 @@ public sealed class JevDecisionEngine : IDecisionEngine
 
             using var response = await client
                 .SendAsync(message, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
-            CheckDeadline();
             if (!response.IsSuccessStatusCode)
             {
                 throw new DecisionServiceException(response.StatusCode);
@@ -86,9 +75,8 @@ public sealed class JevDecisionEngine : IDecisionEngine
                 output.Write(buffer, 0, count);
             }
 
-            CheckDeadline();
+            deadline.Token.ThrowIfCancellationRequested();
             var result = JevWire.ParseResponse(output.ToArray(), request);
-            CheckDeadline();
             activity?.SetTag("decision.model", result.Model);
             return result;
         }
